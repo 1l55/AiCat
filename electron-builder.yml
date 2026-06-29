@@ -1,0 +1,21 @@
+appId: com.aicat.desktoppet
+productName: AI桌面宠物
+directories:
+  output: dist
+  buildResources: resources
+files:
+  - src/**/*
+  - assets/**/*
+  - package.json
+extraMetadata:
+  main: src/main/index.js
+win:
+  target:
+    - nsis
+  icon: assets/icon.png
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: AI桌面宠物

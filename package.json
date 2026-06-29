@@ -1,0 +1,22 @@
+{
+  "name": "ai-desktop-pet",
+  "version": "1.0.0",
+  "description": "AI 桌面宠物「小团子」- 透明置顶像素猫，具备自主行为、AI 对话、养成系统与定时提醒",
+  "main": "src/main/index.js",
+  "author": "1l55",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win"
+  },
+  "dependencies": {
+    "node-cron": "^3.0.3",
+    "pixi.js": "^7.4.2"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  }
+}

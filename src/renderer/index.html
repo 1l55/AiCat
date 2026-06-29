@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data: blob:; connect-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' blob:; worker-src 'self' blob:;" />
+  <title>AI 桌面宠物</title>
+  <style>
+    * { box-sizing: border-box; user-select: none; }
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      overflow: hidden; background: transparent;
+      font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .pet-canvas { position: fixed; left: 0; top: 0; display: block; }
+
+    /* —— 对话气泡 —— */
+    .pet-bubble {
+      position: fixed; max-width: 220px; padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.97); color: #333;
+      border: 2px solid #ffb3c6; border-radius: 14px;
+      font-size: 13px; line-height: 1.4; z-index: 50;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+      pointer-events: none; word-break: break-word;
+      animation: pop .18s ease-out;
+    }
+    .pet-bubble::after {
+      content: ''; position: absolute; left: 50%; bottom: -9px; transform: translateX(-50%);
+      border: 7px solid transparent; border-top-color: #ffb3c6;
+    }
+    .pet-bubble[data-emotion="angry"] { border-color: #ff7a7a; }
+    .pet-bubble[data-emotion="angry"]::after { border-top-color: #ff7a7a; }
+    .pet-bubble[data-emotion="sad"], .pet-bubble[data-emotion="sleepy"] { border-color: #9db4ff; }
+    .pet-bubble[data-emotion="sad"]::after, .pet-bubble[data-emotion="sleepy"]::after { border-top-color: #9db4ff; }
+    .hidden { display: none !important; }
+    @keyframes pop { from { transform: scale(.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+    /* —— 右键弧形菜单 —— */
+    .pet-radial { position: fixed; z-index: 60; width: 0; height: 0; }
+    .radial-item {
+      position: absolute; left: 0; top: 0; width: 46px; height: 46px; margin: -23px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(40, 40, 52, 0.96); border-radius: 50%; cursor: pointer;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px);
+      /* 收起态：堆在圆心、缩小、透明 */
+      transform: translate(0, 0) scale(.3); opacity: 0;
+      transition: transform .26s cubic-bezier(.34,1.56,.64,1), opacity .2s ease;
+      transition-delay: 0ms;
+    }
+    .pet-radial.open .radial-item {
+      transform: translate(var(--tx), var(--ty)) scale(1); opacity: 1;
+      transition-delay: var(--d);
+    }
+    .radial-item .ri-icon { font-size: 20px; line-height: 1; pointer-events: none; }
+    .radial-item .ri-label {
+      position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%);
+      font-size: 10px; color: #fff; white-space: nowrap; opacity: 0;
+      background: rgba(0,0,0,.55); padding: 1px 6px; border-radius: 6px;
+      transition: opacity .15s; pointer-events: none;
+    }
+    .radial-item:hover { background: rgba(90, 90, 120, 0.98); }
+    .radial-item:hover .ri-label { opacity: 1; }
+    .radial-item.danger:hover { background: rgba(200, 70, 70, 0.95); }
+
+    /* —— 通用面板 —— */
+    .pet-panel {
+      position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      z-index: 70; width: 320px; max-height: 80vh; overflow: auto;
+      background: rgba(34, 34, 46, 0.97); color: #eee; border-radius: 16px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+    }
+    .panel-head {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .panel-title { font-size: 14px; font-weight: 600; }
+    .panel-close { cursor: pointer; opacity: .7; font-size: 14px; }
+    .panel-close:hover { opacity: 1; }
+    .panel-body { padding: 14px 16px; }
+    .sec { font-size: 12px; color: #ffb3c6; margin: 12px 0 6px; }
+
+    /* 状态条 */
+    .sp-level { font-size: 13px; margin-bottom: 10px; }
+    .sp-row { display: flex; align-items: center; gap: 8px; margin: 7px 0; font-size: 12px; }
+    .sp-label { width: 48px; color: #bbb; }
+    .sp-track { flex: 1; height: 12px; background: rgba(255, 255, 255, 0.12); border-radius: 6px; overflow: hidden; }
+    .sp-fill { display: block; height: 100%; width: 0; border-radius: 6px; transition: width .4s; }
+    .sp-val { width: 50px; text-align: right; color: #ddd; }
+
+    /* 表单 */
+    .fld { display: flex; align-items: center; gap: 10px; margin: 8px 0; font-size: 12px; }
+    .fld > span { width: 64px; color: #bbb; }
+    .fld input[type="text"], .fld input[type="password"], .fld select {
+      flex: 1; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.07); color: #fff; font-size: 12px; outline: none;
+    }
+    .fld.chk { gap: 6px; } .fld.chk > span { width: auto; }
+    .panel-actions { margin-top: 14px; text-align: right; }
+    .btn-primary {
+      padding: 7px 16px; border: none; border-radius: 8px; cursor: pointer;
+      background: linear-gradient(135deg, #ff9a9e, #fad0c4); color: #5a2a3a; font-weight: 600; font-size: 12px;
+    }
+    .btn-primary:hover { filter: brightness(1.05); }
+
+    /* 提醒 */
+    .rm-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+    .rm-preset { padding: 6px 9px; border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.06);
+      color: #eee; border-radius: 8px; font-size: 12px; cursor: pointer; }
+    .rm-preset:hover { background: rgba(255,255,255,.14); }
+    .rm-custom { display: flex; flex-direction: column; gap: 8px; }
+    .rm-custom input { flex: 1; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,.15);
+      background: rgba(255,255,255,.07); color: #fff; font-size: 12px; outline: none; min-width: 0; }
+    .rm-time-picker { display: flex; align-items: center; gap: 4px; }
+    .rm-time-picker select { padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,.15);
+      background: rgba(255,255,255,.07); color: #fff; font-size: 12px; outline: none; cursor: pointer; }
+    .rm-item { display: flex; align-items: center; gap: 8px; padding: 8px 4px; border-bottom: 1px solid rgba(255,255,255,.06); }
+    .rm-info { flex: 1; display: flex; flex-direction: column; }
+    .rm-info small { color: #999; font-size: 11px; }
+    .rm-del { cursor: pointer; opacity: .7; } .rm-del:hover { opacity: 1; }
+    .rm-empty { color: #888; font-size: 12px; padding: 8px 0; }
+
+    /* 聊天输入 */
+    .pet-chat {
+      position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+      z-index: 65; display: flex; align-items: center; gap: 6px;
+      background: rgba(34, 34, 46, 0.97); padding: 8px; border-radius: 24px;
+      box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4);
+    }
+    .chat-input {
+      width: 240px; padding: 8px 14px; border: none; border-radius: 18px;
+      background: rgba(255, 255, 255, 0.1); color: #fff; font-size: 13px; outline: none;
+    }
+    .chat-send, .chat-close {
+      width: 34px; height: 34px; border: none; border-radius: 50%; cursor: pointer; font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .chat-send { background: linear-gradient(135deg, #ff9a9e, #fad0c4); color: #5a2a3a; }
+    .chat-close { background: rgba(255, 255, 255, 0.1); color: #ccc; }
+
+    /* —— 成就 & 形象面板 —— */
+    .ach-progress { font-size: 12px; color: #ddd; margin-bottom: 4px; }
+    .ach-progress .ach-count { color: #ffd35a; font-weight: 600; font-size: 14px; }
+    .skin-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .skin-cell {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      padding: 6px 2px; border-radius: 10px; cursor: pointer;
+      border: 2px solid transparent; transition: border-color .15s, background .15s;
+    }
+    .skin-cell:hover { background: rgba(255, 255, 255, 0.07); }
+    .skin-cell.active { border-color: #ffd35a; background: rgba(255, 211, 90, 0.12); }
+    .skin-cell.locked { cursor: default; opacity: .55; }
+    .skin-swatch {
+      width: 34px; height: 34px; border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      display: flex; align-items: center; justify-content: center; font-size: 13px;
+      image-rendering: pixelated;
+    }
+    .skin-name { font-size: 11px; color: #ccc; }
+    .skin-cell.active .skin-name { color: #ffd35a; }
+
+    /* 配饰衣橱（按槽位分组） */
+    .acc-wardrobe { display: flex; flex-direction: column; gap: 8px; }
+    .acc-group { display: flex; flex-direction: column; gap: 4px; }
+    .acc-slot-label { font-size: 11px; color: #9fb0d0; }
+    .acc-cells { display: flex; flex-wrap: wrap; gap: 6px; }
+    .acc-cell {
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      min-width: 46px; padding: 5px 4px; border-radius: 9px; cursor: pointer;
+      border: 2px solid transparent; background: rgba(255,255,255,.05);
+      transition: border-color .15s, background .15s;
+    }
+    .acc-cell:hover { background: rgba(255,255,255,.1); }
+    .acc-cell.active { border-color: #ffd35a; background: rgba(255,211,90,.14); }
+    .acc-cell.locked { cursor: default; opacity: .5; }
+    .acc-chip { font-size: 16px; line-height: 1; }
+    .acc-name { font-size: 10px; color: #ccc; white-space: nowrap; }
+    .acc-cell.active .acc-name { color: #ffd35a; }
+
+    .ach-list { display: flex; flex-direction: column; }
+    .ach-item {
+      display: flex; align-items: center; gap: 10px; padding: 8px 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .ach-item.locked { opacity: .5; }
+    .ach-icon { font-size: 16px; width: 22px; text-align: center; }
+    .ach-info { display: flex; flex-direction: column; }
+    .ach-info b { font-size: 13px; color: #eee; }
+    .ach-info small { font-size: 11px; color: #999; }
+  </style>
+</head>
+<body>
+  <!-- PixiJS UMD（本地）—— 必须最先加载 -->
+  <script src="../../assets/vendor/pixi.min.js"></script>
+  <!-- 共享常量（定义 window.PetConstants）—— 必须先于业务脚本 -->
+  <script src="../shared/constants.js"></script>
+  <!-- 共享人设系统（定义 window.PetPersonality）-->
+  <script src="../shared/personality.js"></script>
+  <!-- 宠物引擎 -->
+  <script src="./pet/Pet.js"></script>
+  <script src="./pet/StateMachine.js"></script>
+  <script src="./pet/BehaviorTree.js"></script>
+  <script src="./pet/Interaction.js"></script>
+  <!-- UI -->
+  <script src="./ui/DialogBubble.js"></script>
+  <script src="./ui/MenuPanel.js"></script>
+  <script src="./ui/StatusPanel.js"></script>
+  <script src="./ui/SettingsPanel.js"></script>
+  <script src="./ui/ReminderPanel.js"></script>
+  <script src="./ui/AchievementPanel.js"></script>
+  <!-- AI -->
+  <script src="./ai/ChatService.js"></script>
+  <!-- 小游戏 -->
+  <script src="./games/MiniGameBase.js"></script>
+  <script src="./games/LaserChase.js"></script>
+  <!-- 主入口 -->
+  <script src="./main.js"></script>
+</body>
+</html>
